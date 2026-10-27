@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Dashboard Apple Store", layout="wide")
-
 @st.cache_data
 def carregar_dados():
     df = pd.read_csv("AppleStore.csv")
