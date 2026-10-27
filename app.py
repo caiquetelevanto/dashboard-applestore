@@ -5,7 +5,6 @@ st.set_page_config(page_title="Dashboard Apple Store", layout="wide")
 
 @st.cache_data
 def carregar_dados():
-    caminho_csv = r"c:\Users\Pichau\Desktop\Coisas de estudar\sql\appstore\AppleStore.csv"
     df = pd.read_csv("AppleStore.csv")
     df['tipo_preco'] = df['price'].apply(lambda x: 'Gratuito' if x == 0 else 'Pago')
     return df
@@ -33,8 +32,10 @@ if 'Todas' not in filtro_categoria and len(filtro_categoria) > 0:
 
 st.session_state['df'] = df_filtrado
 
+# Definição das Páginas do Streamlit
 pg1 = st.Page("pagina1.py", title="📊 Visão Geral", default=True)
 pg2 = st.Page("pagina2.py", title="📈 Análise de Avaliações")
+pg3 = st.Page("clusters.py", title="🤖 Clusterização 3D")  # <-- Adicionado o clusters.py
 
-pg = st.navigation([pg1, pg2])
+pg = st.navigation([pg1, pg2, pg3])
 pg.run()
