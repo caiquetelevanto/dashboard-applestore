@@ -34,7 +34,8 @@ st.session_state['df'] = df_filtrado
 # Definição das Páginas do Streamlit
 pg1 = st.Page("pagina1.py", title="📊 Visão Geral", default=True)
 pg2 = st.Page("pagina2.py", title="📈 Análise de Avaliações")
-pg3 = st.Page("clusters.py", title="🤖 Clusterização 3D")  # <-- Adicionado o clusters.py
+pg3 = st.Page("clusters.py", title=" 🤖 Clusterização 3D") 
+pg3 = st.Page("google_play_fuzzy.py", title="🧠 Google Play Store - Fuzzy")
 
 pg = st.navigation([pg1, pg2, pg3])
 pg.run()
