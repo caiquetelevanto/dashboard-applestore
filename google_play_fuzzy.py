@@ -1,62 +1,164 @@
-!pip install scikit-fuzzy
+
+import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 from sklearn.preprocessing import MinMaxScaler
 import skfuzzy as fuzz
 
-# 1. Carregar a base
-df = pd.read_csv('google_play_store_dataset.csv')
+# ==========================================
+# 1. CONFIGURAÇÃO DA PÁGINA
+# ==========================================
 
-# 2. Limpar e converter colunas para numérico
-df = df.dropna(subset=['Rating', 'Reviews', 'Installs', 'Price'])
+st.title("🧠 Segmentação Fuzzy — Google Play Store")
 
-# Limpar 'Installs' (remover '+' e ',')
-df['Installs'] = df['Installs'].astype(str).str.replace('+', '').str.replace(',', '')
-df = df[df['Installs'].str.isnumeric()]
-df['Installs'] = df['Installs'].astype(float)
+st.markdown("""
+Análise de segmentação dos aplicativos utilizando o algoritmo
+**Fuzzy C-Means**, considerando avaliações, reviews,
+instalações e preços.
+""")
 
-# Limpar 'Price' (remover '$')
-df['Price'] = df['Price'].astype(str).str.replace('$', '')
-df = df[df['Price'].str.replace('.', '', 1).str.isnumeric()]
-df['Price'] = df['Price'].astype(float)
+# ==========================================
+# 2. CARREGAMENTO DA BASE
+# ==========================================
 
-# Converter 'Reviews' para numérico
-df['Reviews'] = df['Reviews'].astype(float)
+@st.cache_data
+def carregar_dados():
 
-# 3. Selecionar as variáveis para a Lógica Fuzzy
+    df = pd.read_csv('google_play_store_dataset.csv')
+
+    # Remover registros sem informações essenciais
+    df = df.dropna(
+        subset=['Rating', 'Reviews', 'Installs', 'Price']
+    ).copy()
+
+    # Converter Rating
+    df['Rating'] = pd.to_numeric(
+        df['Rating'], errors='coerce'
+    )
+
+    # Limpar Installs
+    df['Installs'] = (
+        df['Installs']
+        .astype(str)
+        .str.replace('+', '', regex=False)
+        .str.replace(',', '', regex=False)
+    )
+
+    df['Installs'] = pd.to_numeric(
+        df['Installs'], errors='coerce'
+    )
+
+    # Limpar Price
+    df['Price'] = (
+        df['Price']
+        .astype(str)
+        .str.replace('$', '', regex=False)
+    )
+
+    df['Price'] = pd.to_numeric(
+        df['Price'], errors='coerce'
+    )
+
+    # Converter Reviews
+    df['Reviews'] = pd.to_numeric(
+        df['Reviews'], errors='coerce'
+    )
+
+    # Remover valores inválidos
+    df = df.dropna(
+        subset=['Rating', 'Reviews', 'Installs', 'Price']
+    )
+
+    # Instalações precisam ser positivas para a escala log
+    df = df[df['Installs'] > 0].copy()
+
+    return df
+
+
+df = carregar_dados()
+
+# ==========================================
+# 3. SELEÇÃO DAS VARIÁVEIS
+# ==========================================
+
 features = ['Rating', 'Reviews', 'Installs', 'Price']
+
 data_cluster = df[features].values
 
-# 4. Normalizar os dados (Fuzzy é sensível à escala)
+# ==========================================
+# 4. NORMALIZAÇÃO
+# ==========================================
+
 scaler = MinMaxScaler()
+
 data_scaled = scaler.fit_transform(data_cluster)
-# O algoritmo skfuzzy precisa dos dados transpostos (linhas = variáveis, colunas = amostras)
+
+# Transposição exigida pelo Scikit-Fuzzy
 data_fuzzy = data_scaled.T
 
-# Definir número de clusters (c=3) e o fator de fuzzificação (m=2)
-n_clusters = 3
-cntr, u, u0, d, jm, p, fpc = fuzz.cluster.cmeans(
-    data_fuzzy, c=n_clusters, m=2, error=0.005, maxiter=1000, init=None
-)
+# ==========================================
+# 5. FUZZY C-MEANS
+# ==========================================
 
-# 'u' contém a matriz de pertinência (grau de 0 a 1 de cada app em cada cluster)
-# Vamos adicionar esses resultados de volta ao DataFrame original
-for i in range(n_clusters):
+@st.cache_data
+def executar_fuzzy(data_fuzzy):
+
+    cntr, u, u0, d, jm, p, fpc = fuzz.cluster.cmeans(
+        data_fuzzy,
+        c=3,
+        m=2,
+        error=0.005,
+        maxiter=1000,
+        init=None
+    )
+
+    return u, fpc, p
+
+
+u, fpc, iteracoes = executar_fuzzy(data_fuzzy)
+
+# ==========================================
+# 6. GRAUS DE PERTINÊNCIA
+# ==========================================
+
+for i in range(3):
+
     df[f'Pertinencia_Grupo_{i+1}'] = u[i]
 
-# Identificar o grupo principal (maior pertinência), embora o ganho real seja o percentual
 df['Grupo_Dominante'] = np.argmax(u, axis=0) + 1
-import plotly.graph_objects as go
-import numpy as np
 
-# 1. Trocar o Preço por Instalações (ou Reviews) para espalhar a concentração
+# ==========================================
+# 7. INDICADORES
+# ==========================================
+
+st.subheader("Indicadores da Segmentação")
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric("Aplicativos analisados", f"{len(df):,}".replace(",", "."))
+col2.metric("Clusters identificados", "3")
+col3.metric("FPC", f"{fpc:.4f}")
+
+st.caption(
+    f"Algoritmo: Fuzzy C-Means | "
+    f"Fator de fuzzificação: 2 | "
+    f"Iterações: {iteracoes}"
+)
+
+st.divider()
+
+# ==========================================
+# 8. GRÁFICO DE DISPERSÃO
+# ==========================================
+
+st.subheader("Qualidade vs. Popularidade dos Aplicativos")
+
 x_data = df['Rating']
-y_data = df['Installs']  # Variável de volume mostra o real sucesso do app
+y_data = df['Installs']
 
-# 2. Cor baseada na pertinência fuzzy do Grupo 1
 cores_fuzzy = df['Pertinencia_Grupo_1']
 
-# 3. Gerar o novo gráfico
 fig = go.Figure(data=[go.Scatter(
     x=x_data,
     y=y_data,
@@ -65,40 +167,93 @@ fig = go.Figure(data=[go.Scatter(
         size=6,
         color=cores_fuzzy,
         colorscale='Viridis',
-        opacity=0.6,             # Um pouco mais de transparência ajuda a ver onde há acúmulo de pontos
+        opacity=0.6,
         showscale=True,
         colorbar=dict(
-            title="Pertinência G1",
-            tickfont=dict(color='white'),
-            titlefont=dict(color='white')
+            title=dict(
+                text="Pertinência G1",
+                font=dict(color='white')
+            ),
+            tickfont=dict(color='white')
         )
     )
 )])
 
-# 4. Customização essencial do Layout
+# ==========================================
+# 9. LAYOUT DO GRÁFICO
+# ==========================================
+
 fig.update_layout(
+
     template="plotly_dark",
+
     paper_bgcolor='#111111',
     plot_bgcolor='#111111',
+
     xaxis=dict(
-        title='Avaliações (Rating)',
+        title=dict(
+            text='Avaliações (Rating)',
+            font=dict(color='white')
+        ),
         gridcolor='#222222',
         tickfont=dict(color='white'),
-        titlefont=dict(color='white'),
-        range=[1, 5]             # Limita o eixo X ao intervalo real de notas
+        range=[1, 5]
     ),
+
     yaxis=dict(
-        title='Volume de Instalações (Escala Log)',
-        type='log',              # <--- ESTA LINHA ESPALHA OS DADOS VERTICALMENTE
+        title=dict(
+            text='Volume de Instalações (Escala Log)',
+            font=dict(color='white')
+        ),
+        type='log',
         gridcolor='#222222',
-        tickfont=dict(color='white'),
-        titlefont=dict(color='white')
+        tickfont=dict(color='white')
     ),
-    margin=dict(l=40, r=40, b=40, t=50),
+
+    margin=dict(
+        l=40,
+        r=40,
+        b=40,
+        t=50
+    ),
+
     title=dict(
         text="Transição Fuzzy: Qualidade vs Popularidade dos Apps",
         font=dict(color='white', size=16)
-    )
+    ),
+
+    height=600
 )
 
-fig.show()
+# ==========================================
+# 10. EXIBIÇÃO NO STREAMLIT
+# ==========================================
+
+st.plotly_chart(
+    fig,
+    use_container_width=True
+)
+
+# ==========================================
+# 11. EXIBIÇÃO DOS GRUPOS
+# ==========================================
+
+st.divider()
+
+st.subheader("Distribuição dos Grupos")
+
+perfil_grupos = df.groupby('Grupo_Dominante').agg({
+    'Rating': 'mean',
+    'Reviews': 'mean',
+    'Installs': 'mean',
+    'Price': 'mean'
+}).round(2)
+
+perfil_grupos.index = [
+    f"Grupo {i}" for i in perfil_grupos.index
+]
+
+st.dataframe(
+    perfil_grupos,
+    use_container_width=True
+)
